@@ -8,8 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Add kokkos sources
 add_subdirectory(kokkos)
 
-# Add linking to Python
-find_package(Python3 COMPONENTS Development NumPy)
+# # Add linking to Python
+# find_package(Python3 COMPONENTS Development NumPy)
 
 # Add sources in src/
 add_executable(off_axis src/main.cpp)
