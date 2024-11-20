@@ -303,16 +303,29 @@ void hypercube(
 
   Kokkos::View<bool**> mask("mask", output.extent(0), output.extent(1));
 
+  // Axes of AABB in rotated frame
+  Point uu = {u.x, v.x, w.x};
+  Point vv = {u.y, v.y, w.y};
+  Point ww = {u.z, v.z, w.z};
 
   Kokkos::parallel_for("hypercube", cfg.Npt, KOKKOS_LAMBDA(const int i) {
+    // Compute position relative to center
     Point xcell = {
       (xc(i, 0) - O.x) / cfg.dx,
       (xc(i, 1) - O.y) / cfg.dx,
       (xc(i, 2) - O.z) / cfg.dx
     };
-    Point vcell = {vc(i, 0), vc(i, 1), vc(i, 2)};
+    // Rotate and shift to [0, 1]
+    xcell = {dot3d(xcell, uu) + 0.5,
+             dot3d(xcell, vv) + 0.5,
+             dot3d(xcell, ww) + 0.5};
 
-    cell2hypercube(xcell, dxc(i), vcell, sigma_v(i), u, v, w, weight(i), cfg.Npix, cfg.NpixVelocity, output, mask);
+    Point vcell = {vc(i, 0), vc(i, 1), vc(i, 2)};
+    vcell = {dot3d(vcell, uu),
+             dot3d(vcell, vv),
+             dot3d(vcell, ww)};
+
+    cell2hypercube(xcell, dxc(i) / cfg.dx, vcell, sigma_v(i), uu, vv, ww, weight(i), cfg.Npix, cfg.NpixVelocity, output, mask);
   });
 
   Kokkos::parallel_reduce("sum", cfg.Npix, KOKKOS_LAMBDA(const int i, double& view_tot) {
@@ -336,7 +349,8 @@ PyCArray compute_hypercube(
   const int NpixVelocity,
   const PyCArray u,
   const PyCArray v,
-  const PyCArray O
+  const PyCArray O,
+  const double dx
 ) {
   // Check input array sizes
   py::buffer_info buf_x = xc.request(),
@@ -366,13 +380,10 @@ PyCArray compute_hypercube(
   cfg.Npix = Npix;
   cfg.NpixVelocity = NpixVelocity;
   cfg.Npt = xc.shape(0);
-  // TODO
-  cfg.dx = 1.0;
+
+  cfg.dx = dx;
   cfg.vmin = 0.0;
   cfg.vmax = 1.0;
-
-  std::cout << "uu: " << uu.x << " " << uu.y << " " << uu.z << std::endl;
-  std::cout << "vv: " << vv.x << " " << vv.y << " " << vv.z << std::endl;
 
   // Output buffer
   PyCArray output = PyCArray({cfg.Npix, cfg.Npix, cfg.NpixVelocity});
@@ -428,181 +439,6 @@ PyCArray compute_hypercube(
 
   return output;
 }
-
-// int main(int argc, char* argv[]) {
-//   Kokkos::initialize(argc, argv);
-//   const int Npix = 128;
-//   const int NpixVelocity = 128;
-//   const int Npt = 16;
-//   const int Npthalf = Npt / 2;
-//   {
-//     auto read_fortran_record = [](std::ifstream& file, auto* data, int N) {
-//       uint32_t record_size_start, record_size_end;
-
-//       size_t record_size = N * sizeof(decltype(data));
-
-//       // Read record size at start
-//       file.read((char*) &record_size_start, sizeof(uint32_t));
-//       if (record_size_start != N * sizeof(decltype(&data))) {
-//         throw std::runtime_error(
-//           "Record size mismatch at start, expected "
-//           + std::to_string(N * sizeof(decltype(&data)))
-//           + " but got " + std::to_string(record_size_start)
-//         );
-//       }
-//       // Read data
-//       file.read((char*) data, N * sizeof(decltype(&data)));
-
-//       // Read record size at end
-//       file.read((char*) &record_size_end, sizeof(uint32_t));
-//       if (record_size_end != N * sizeof(decltype(&data))) {
-//         throw std::runtime_error(
-//           "Record size mismatch at end, expected "
-//           + std::to_string(N * sizeof(decltype(&data)))
-//           + " but got " + std::to_string(record_size_end)
-//         );
-//       }
-//     };
-
-//     auto read_fortran = [](std::ifstream& file, auto& value) {
-//       uint32_t record_size_start, record_size_end;
-
-//       // Read record size at start
-//       file.read((char*) &record_size_start, sizeof(decltype(value)));
-//       if (record_size_start != sizeof(int)) {
-//         throw std::runtime_error(
-//           "Record size mismatch at start, expected "
-//           + std::to_string(sizeof(int))
-//           + " but got " + std::to_string(record_size_start)
-//         );
-//       }
-
-//       // Read data
-//       file.read((char*) &value, sizeof(decltype(value)));
-
-//       // Read record size at end
-//       file.read((char*) &record_size_end, sizeof(decltype(value)));
-//       if (record_size_end != sizeof(int)) {
-//         throw std::runtime_error(
-//           "Record size mismatch at end, expected "
-//           + std::to_string(sizeof(int))
-//           + " but got " + std::to_string(record_size_end)
-//         );
-//       }
-//     };
-
-//     // Read data from file
-//     std::ifstream ifile("/tmp/data.bin", std::ios::binary);
-//     uint32_t Npt;
-//     read_fortran(ifile, Npt);
-
-//     std::cout << "Npt = " << Npt << std::endl;
-
-//     // Create point view
-//     Kokkos::View<double**> xc("xc", Npt, 3);
-//     Kokkos::View<double**> vc("vc", Npt, 3);
-//     Kokkos::View<double*> dxc("dxc", Npt);
-//     Kokkos::View<double*> sigma_vc("sigma_v", Npt);
-//     Kokkos::View<double*> weight("weight", Npt);
-
-//     {
-//       auto xc_host = Kokkos::create_mirror_view(xc);
-//       auto vc_host = Kokkos::create_mirror_view(vc);
-//       auto dxc_host = Kokkos::create_mirror_view(dxc);
-//       auto sigma_vc_host = Kokkos::create_mirror_view(sigma_vc);
-
-//       Kokkos::View<double**, Kokkos::LayoutRight, Kokkos::HostSpace> xc_host_F = Kokkos::create_mirror_view(xc_host);
-//       Kokkos::View<double**, Kokkos::LayoutRight, Kokkos::HostSpace> vc_host_F = Kokkos::create_mirror_view(vc_host);
-
-//       // Read positions [note, we use Fortran order]
-//       read_fortran_record(ifile, Kokkos::subview(xc_host_F, Kokkos::ALL, 0).data(), Npt);
-//       read_fortran_record(ifile, Kokkos::subview(xc_host_F, Kokkos::ALL, 1).data(), Npt);
-//       read_fortran_record(ifile, Kokkos::subview(xc_host_F, Kokkos::ALL, 2).data(), Npt);
-//       read_fortran_record(ifile, dxc_host.data(), Npt);
-//       read_fortran_record(ifile, Kokkos::subview(vc_host_F, Kokkos::ALL, 0).data(), Npt);
-//       read_fortran_record(ifile, Kokkos::subview(vc_host_F, Kokkos::ALL, 1).data(), Npt);
-//       read_fortran_record(ifile, Kokkos::subview(vc_host_F, Kokkos::ALL, 2).data(), Npt);
-//       read_fortran_record(ifile, sigma_vc_host.data(), Npt);
-
-//       // Close file
-//       ifile.close();
-
-//       // Copy from Fortran to C order
-//       Kokkos::deep_copy(xc_host, xc_host_F);
-//       Kokkos::deep_copy(vc_host, vc_host_F);
-
-//       // Copy to device
-//       Kokkos::deep_copy(xc, xc_host);
-//       Kokkos::deep_copy(vc, vc_host);
-//       Kokkos::deep_copy(dxc, dxc_host);
-//       Kokkos::deep_copy(sigma_vc, sigma_vc_host);
-//       std::cout << "xp = " << xc_host_F(1000, 0) << ", " << xc_host_F(1000, 1) << ", " << xc_host_F(1000, 2) << std::endl;
-//     }
-
-//     std::cout << "HERE!" << std::endl;
-
-
-//     // // Initialize RNG
-//     // Kokkos::Random_XorShift64_Pool<> random_pool(/*seed=*/12345);
-
-//     // Kokkos::parallel_for("initialize_cells", Npt, KOKKOS_LAMBDA(const int i) {
-//     //   xc(i, 0) = (double(i / Npthalf) + 0.5) / Npthalf;
-//     //   xc(i, 1) = (double(i % Npthalf) + 0.5) / Npthalf;
-//     //   // xc(i, 0) = 0.5;
-//     //   // xc(i, 1) = 0.5;
-//     //   xc(i, 2) = 0.5;
-
-//     //   dxc(i) = 0.5 / Npthalf;
-
-//     //   // auto generator = random_pool.get_state();
-//     //   // vc(i, 0) = normal(0.5, 0.1, generator);
-//     //   // vc(i, 1) = normal(0.5, 0.1, generator);
-//     //   // vc(i, 2) = normal(0.5, 0.1, generator);
-//     //   // random_pool.free_state(generator);
-//     //   vc(i, 0) = 0.44398917 / 2;
-//     //   vc(i, 1) = -0.65130061 / 2;
-//     //   vc(i, 2) = -0.61537073 / 2;
-//     //   sigma_vc(i) = 0.1;
-
-//     //   // std::cout << "vc = " << vc(i, 0) << ", " << vc(i, 1) << ", " << vc(i, 2) << std::endl;
-//     // });
-
-//     // Create hypercube view
-//     Point u = {0.89572202, 0.30454387, 0.32393687};
-//     Point v = {-0.0235729 , -0.69502558,  0.71859847};
-//     Point O = {0, 0, 0};
-
-//     Config cfg;
-//     cfg.Npix = Npix;
-//     cfg.NpixVelocity = NpixVelocity;
-//     cfg.Npt = Npt;
-//     cfg.dx = 1.0;
-//     cfg.vmin = 0.0;
-//     cfg.vmax = 1.0;
-
-//     Kokkos::View<double***> cube("hypercube", cfg.Npix, cfg.Npix, cfg.NpixVelocity);
-//     hypercube(xc, vc, dxc, sigma_vc, weight, u, v, O, cfg, cube);
-
-//     // Copy view to host
-//     auto cube_h0 = Kokkos::create_mirror_view(cube);
-//     Kokkos::View<double***, Kokkos::LayoutRight, Kokkos::HostSpace> cube_h = cube_h0;
-//     Kokkos::deep_copy(cube_h0, cube);
-//     Kokkos::deep_copy(cube_h, cube_h0);
-
-//     // Write as raw binary
-//     std::cout << "Writing to numpy array" << std::endl;
-//     std::ofstream file("cube.bin", std::ios::binary);
-//     file.write((char*) &Npix, sizeof(int));
-//     file.write((char*) &NpixVelocity, sizeof(int));
-//     file.write((char*) &Npt, sizeof(int));
-
-//     file.write((char*) &u.x, sizeof(Point));
-//     file.write((char*) &v.x, sizeof(Point));
-
-//     file.write((char*) cube_h.data(), cube_h.size() * sizeof(double));
-
-//   }
-// }
 
 void initialize(){
   Kokkos::initialize();

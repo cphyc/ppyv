@@ -11,12 +11,6 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # Add kokkos sources
 add_subdirectory(extern/kokkos)
 
-# If building with CUDA
-if (Kokkos_ENABLE_CUDA)
-    # Add nvcc flags
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler fno-lto")
-endif()
-
 # Link libraries
 link_libraries(Kokkos::kokkos)
 
