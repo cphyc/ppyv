@@ -5,14 +5,26 @@ cmake_minimum_required(VERSION 3.31)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Compile with -fPIC
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Add kokkos sources
-add_subdirectory(kokkos)
+add_subdirectory(extern/kokkos)
 
-# # Add linking to Python
-# find_package(Python3 COMPONENTS Development NumPy)
-
-# Add sources in src/
-add_executable(off_axis src/main.cpp)
+# If building with CUDA
+if (Kokkos_ENABLE_CUDA)
+    # Add nvcc flags
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler fno-lto")
+endif()
 
 # Link libraries
-target_link_libraries(off_axis Kokkos::kokkos)
+link_libraries(Kokkos::kokkos)
+
+# Add pybind11 sources
+add_subdirectory(extern/pybind11)
+
+# Add linking to Python
+pybind11_add_module(ppv src/main.cpp)
+
+# Copy file "test.py"
+configure_file(src/test.py test.py COPYONLY)
