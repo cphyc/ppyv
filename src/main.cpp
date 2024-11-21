@@ -155,6 +155,15 @@ void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
   auto [imin, imax] = minMax(O.x, Oback.x, u.x, v.x, w.x, Nx);
   auto [jmin, jmax] = minMax(O.y, Oback.y, u.y, v.y, w.y, Ny);
 
+  // Special case: cell spans a single pixel
+  if ((0 <= imin && imin == imax + 1 && imax < Nx) &&
+      (0 <= jmin && jmin == jmax + 1 && jmax < Ny)) {
+    // TODO: should probably weight by size of cell?
+    buffer(imin, jmin, 0) += weight;
+    buffer_mask(imin, jmin) = 1;
+    return;
+  }
+
   for (auto i = imin; i < imax; ++i) {
     X.x = (i + 0.5) * inv_dx;
 
