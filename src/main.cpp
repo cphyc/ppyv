@@ -76,14 +76,6 @@ bool _initialize_kokkos() {
   return true;
 };
 
-KOKKOS_INLINE_FUNCTION
-double normal(double mu, double sigma, auto &generator) {
-  // Use Box-Muller method to generate a normal distribution
-  double u = generator.drand(0, 1);
-  double v = generator.drand(0, 1);
-  return sqrt(-2.0 * log(u)) * cos(2.0 * M_PI * v) * sigma + mu;
-}
-
 // Define a point structure
 struct Point {
   double x, y, z;
@@ -109,8 +101,8 @@ struct Point {
     return {x + p.x, y + p.y, z + p.z};
   }
 
-  KOKKOS_INLINE_FUNCTION
-  constexpr Point operator+(const auto v) const {
+  template <typename T>
+  KOKKOS_INLINE_FUNCTION constexpr Point operator+(const T v) const {
     return {x + v, y + v, z + v};
   }
 
@@ -517,7 +509,11 @@ PYBIND11_MODULE(ppyv, m) {
 
   std::atexit(_finalize_kokkos_void);
 
-  m.def("compute_hypercube", &compute_hypercube, "Compute hypercube");
+  m.def("compute_hypercube", &compute_hypercube, "Compute hypercube",
+        py::arg("pos"), py::arg("vel"), py::arg("dx"), py::arg("sigma_vel"),
+        py::arg("weight"), py::arg("Npix"), py::arg("Npix_velocity"),
+        py::arg("u"), py::arg("v"), py::arg("O"), py::arg("width"),
+        py::arg("vmin"), py::arg("vmax"));
   m.def("initialize", _initialize_kokkos, "Initialize Kokkos");
   m.def("finalize", _finalize_kokkos, "Finalize Kokkos");
 }
