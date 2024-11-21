@@ -456,24 +456,50 @@ PyCArray compute_hypercube(const PyCArray xc, const PyCArray vc,
   return output;
 }
 
-bool initialize() {
-  if (Kokkos::is_initialized())
-    return false;
-  Kokkos::initialize();
-  return true;
-}
+PYBIND11_MODULE(ppyv, m) {
+  m.doc() = "PPyV module";
 
-bool finalize() {
-  if (!Kokkos::is_initialized())
-    return false;
-  Kokkos::finalize();
-  return true;
-}
+  // Initialize kokkos
+  auto _initialize = [&]() {
+    if (Kokkos::is_initialized())
+      return false;
 
-PYBIND11_MODULE(ppv, m) {
-  m.doc() = "PPV module";
+    // python system module
+    py::module sys = py::module::import("sys");
+    // get the arguments for python system module
+    py::object args = sys.attr("argv");
+    auto argv = args.cast<py::list>();
+    int _argc = argv.size();
+    char **_argv = new char *[argv.size()];
+    for (int i = 0; i < _argc; ++i) {
+      auto _args = argv[i].cast<std::string>();
+      if (_args == "--") {
+        for (int j = i; j < _argc; ++j)
+          _argv[i] = nullptr;
+        _argc = i;
+        break;
+      }
+      _argv[i] = strdup(_args.c_str());
+    }
+    Kokkos::initialize(_argc, _argv);
+    for (int i = 0; i < _argc; ++i)
+      free(_argv[i]);
+    delete[] _argv;
+    return true;
+  };
+
+  // Finalize kokkos
+  auto _finalize = []() {
+    if (!Kokkos::is_initialized())
+      return false;
+    Kokkos::Tools::Experimental::set_deallocate_data_callback(nullptr);
+    py::module gc = py::module::import("gc");
+    gc.attr("collect")();
+    Kokkos::finalize();
+    return true;
+  };
 
   m.def("compute_hypercube", &compute_hypercube, "Compute hypercube");
-  m.def("initialize", &initialize, "Initialize Kokkos");
-  m.def("finalize", &finalize, "Finalize Kokkos");
+  m.def("initialize", _initialize, "Initialize Kokkos");
+  m.def("finalize", _finalize, "Finalize Kokkos");
 }

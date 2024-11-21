@@ -29,7 +29,7 @@ link_libraries(Kokkos::kokkos)
 add_subdirectory(extern/pybind11)
 
 # Add linking to Python
-pybind11_add_module(ppv src/main.cpp)
+pybind11_add_module(ppyv src/main.cpp)
 
 # Copy file "test.py"
 configure_file(src/test.py test.py COPYONLY)
