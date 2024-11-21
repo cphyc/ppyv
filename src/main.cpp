@@ -127,6 +127,22 @@ bool check_in_parallelogram(const Point &PA, const Point &PQ, const Point &PR,
 }
 
 KOKKOS_INLINE_FUNCTION
+void kernel_gaussian(const int i, const int j, const int N, const double mean,
+                     const double std, const double w,
+                     Kokkos::View<double ***> out) {
+  const double mm = mean * N, ss = std * N;
+  const double one_over_sqrt2std = 1 / (sqrt(2) * std * N);
+  int kmin = std::max(int(floor(mm - 4 * ss)), 0),
+      kmax = std::min(int(ceil(mm + 4 * ss)), N);
+
+  for (auto k = kmin; k < kmax; ++k) {
+    out(i, j, k) += w / 2 *
+                    (std::erf((k + 1 - mm) * one_over_sqrt2std) -
+                     std::erf((k - mm) * one_over_sqrt2std));
+  }
+}
+
+KOKKOS_INLINE_FUNCTION
 void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
                            const Point &v, const Point &w, const double weight,
                            const double vel, const double sigma_v,
@@ -159,7 +175,8 @@ void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
   if ((0 <= imin && imin == imax + 1 && imax < Nx) &&
       (0 <= jmin && jmin == jmax + 1 && jmax < Ny)) {
     // TODO: should probably weight by size of cell?
-    buffer(imin, jmin, 0) += weight;
+    kernel_gaussian(imin, jmin, NpixVelocity, vel, sigma_v, weight, buffer);
+    // buffer(imin, jmin, 0) += weight;
     buffer_mask(imin, jmin) = 1;
     return;
   }
@@ -233,7 +250,9 @@ void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
         continue;
       } else if (Nhit == 2) {
         // TODO: This is a performance bottleneck
-        Kokkos::atomic_add(&buffer(i, j, 0), (zmax - zmin) * weight);
+        // Kokkos::atomic_add(&buffer(i, j, 0), (zmax - zmin) * weight);
+        kernel_gaussian(i, j, NpixVelocity, vel, sigma_v,
+                        (zmax - zmin) * weight, buffer);
         // buffer(i, j, 0) += (zmax - zmin) * weight;
 
         buffer_mask(i, j) = 1;
@@ -312,17 +331,16 @@ void hypercube(Kokkos::View<double **> &xc, Kokkos::View<double **> &vc,
         xcell = {dot3d(xcell, uu) + 0.5, dot3d(xcell, vv) + 0.5,
                  dot3d(xcell, ww) + 0.5};
 
-        Point vcell = {(vc(i, 0) - cfg.vmin) / dv, (vc(i, 1) - cfg.vmin) / dv,
-                       (vc(i, 2) - cfg.vmin) / dv};
-        vcell = {dot3d(vcell, uu), dot3d(vcell, vv), dot3d(vcell, ww)};
+        Point vcell = {vc(i, 0), vc(i, 1), vc(i, 2)};
+        const double vlos = dot3d(vcell, w);
 
         const double ddx = dxc(i) / cfg.dx;
         Point p000 = xcell - uu * ddx / 2 - vv * ddx / 2 - ww * ddx / 2;
         Point p111 = xcell + uu * ddx / 2 + vv * ddx / 2 + ww * ddx / 2;
 
         direct_integrate_cube(p000, p111, uu * ddx, vv * ddx, ww * ddx,
-                              weight(i), vcell.z, sigma_v(i), cfg.NpixVelocity,
-                              output, mask);
+                              weight(i), (vlos - cfg.vmin) / dv,
+                              sigma_v(i) / dv, cfg.NpixVelocity, output, mask);
 
         // cell2hypercube(xcell, dxc(i) / cfg.dx, vcell.z, sigma_v(i), uu, vv,
         // ww,
