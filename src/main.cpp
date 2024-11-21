@@ -11,6 +11,7 @@
 #include <pybind11/pybind11.h>
 
 namespace py = pybind11;
+using namespace pybind11::literals;
 
 typedef Kokkos::View<double ***, Kokkos::LayoutRight, Kokkos::HostSpace,
                      Kokkos::MemoryTraits<Kokkos::Unmanaged>>
@@ -346,7 +347,6 @@ void hypercube(Kokkos::View<double **> &xc, Kokkos::View<double **> &vc,
                    u.x * v.y - u.y * v.x};
 
   const double dv = cfg.vmax - cfg.vmin;
-  double view_tot = 0.0;
 
   Kokkos::View<bool **> mask("mask", output.extent(0), output.extent(1));
 
@@ -374,23 +374,7 @@ void hypercube(Kokkos::View<double **> &xc, Kokkos::View<double **> &vc,
         direct_integrate_cube(p000, p111, uu * ddx, vv * ddx, ww * ddx,
                               weight(i), (vlos - cfg.vmin) / dv,
                               sigma_v(i) / dv, cfg.NpixVelocity, output, mask);
-
-        // cell2hypercube(xcell, dxc(i) / cfg.dx, vcell.z, sigma_v(i), uu, vv,
-        // ww,
-        //                weight(i), cfg.Npix, cfg.NpixVelocity, output, mask);
       });
-
-  Kokkos::parallel_reduce(
-      "sum", cfg.Npix,
-      KOKKOS_LAMBDA(const int i, double &view_tot) {
-        for (auto j = 0; j < output.extent(1); j++) {
-          view_tot += output(i, j, 0);
-        }
-      },
-      view_tot);
-
-  std::cout << "view_tot: " << view_tot << " (" << view_tot / cfg.Npt << ")"
-            << std::endl;
 }
 
 PyCArray compute_hypercube(const PyCArray xc, const PyCArray vc,
@@ -509,11 +493,10 @@ PYBIND11_MODULE(ppyv, m) {
 
   std::atexit(_finalize_kokkos_void);
 
-  m.def("compute_hypercube", &compute_hypercube, "Compute hypercube",
-        py::arg("pos"), py::arg("vel"), py::arg("dx"), py::arg("sigma_vel"),
-        py::arg("weight"), py::arg("Npix"), py::arg("Npix_velocity"),
-        py::arg("u"), py::arg("v"), py::arg("O"), py::arg("width"),
-        py::arg("vmin"), py::arg("vmax"));
+  m.def("compute_hypercube", &compute_hypercube, "Compute hypercube", "pos"_a,
+        "vel"_a, "dx"_a, "sigma_v"_a, "weight"_a, "Npix"_a, "Npix_velocity"_a,
+        "u"_a, "v"_a, "O"_a, "width"_a, "vmin"_a, "vmax"_a);
+
   m.def("initialize", _initialize_kokkos, "Initialize Kokkos");
   m.def("finalize", _finalize_kokkos, "Finalize Kokkos");
 }
