@@ -35,6 +35,47 @@ struct Config {
 
 #define SIGN(x) ((x) > 0 ? 1 : -1)
 
+bool _finalize_kokkos() {
+  if (!Kokkos::is_initialized())
+    return false;
+  Kokkos::Tools::Experimental::set_deallocate_data_callback(nullptr);
+  py::module gc = py::module::import("gc");
+  gc.attr("collect")();
+  Kokkos::finalize();
+  return true;
+}
+
+void _finalize_kokkos_void() { _finalize_kokkos(); }
+
+// Initialize kokkos
+bool _initialize_kokkos() {
+  if (Kokkos::is_initialized())
+    return false;
+
+  // python system module
+  py::module sys = py::module::import("sys");
+  // get the arguments for python system module
+  py::object args = sys.attr("argv");
+  auto argv = args.cast<py::list>();
+  int _argc = argv.size();
+  char **_argv = new char *[argv.size()];
+  for (int i = 0; i < _argc; ++i) {
+    auto _args = argv[i].cast<std::string>();
+    if (_args == "--") {
+      for (int j = i; j < _argc; ++j)
+        _argv[i] = nullptr;
+      _argc = i;
+      break;
+    }
+    _argv[i] = strdup(_args.c_str());
+  }
+  Kokkos::initialize(_argc, _argv);
+  for (int i = 0; i < _argc; ++i)
+    free(_argv[i]);
+  delete[] _argv;
+  return true;
+};
+
 KOKKOS_INLINE_FUNCTION
 double normal(double mu, double sigma, auto &generator) {
   // Use Box-Muller method to generate a normal distribution
@@ -366,6 +407,10 @@ PyCArray compute_hypercube(const PyCArray xc, const PyCArray vc,
                            const int NpixVelocity, const PyCArray u,
                            const PyCArray v, const PyCArray O, const double dx,
                            const double vmin, const double vmax) {
+
+  // Initialize Kokkos
+  _initialize_kokkos();
+
   // Check input array sizes
   py::buffer_info buf_x = xc.request(), buf_v = vc.request(),
                   buf_dx = dxc.request(), buf_sigma = sigma_vc.request(),
@@ -459,35 +504,6 @@ PyCArray compute_hypercube(const PyCArray xc, const PyCArray vc,
 PYBIND11_MODULE(ppyv, m) {
   m.doc() = "PPyV module";
 
-  // Initialize kokkos
-  auto _initialize = [&]() {
-    if (Kokkos::is_initialized())
-      return false;
-
-    // python system module
-    py::module sys = py::module::import("sys");
-    // get the arguments for python system module
-    py::object args = sys.attr("argv");
-    auto argv = args.cast<py::list>();
-    int _argc = argv.size();
-    char **_argv = new char *[argv.size()];
-    for (int i = 0; i < _argc; ++i) {
-      auto _args = argv[i].cast<std::string>();
-      if (_args == "--") {
-        for (int j = i; j < _argc; ++j)
-          _argv[i] = nullptr;
-        _argc = i;
-        break;
-      }
-      _argv[i] = strdup(_args.c_str());
-    }
-    Kokkos::initialize(_argc, _argv);
-    for (int i = 0; i < _argc; ++i)
-      free(_argv[i]);
-    delete[] _argv;
-    return true;
-  };
-
   // Finalize kokkos
   auto _finalize = []() {
     if (!Kokkos::is_initialized())
@@ -499,7 +515,9 @@ PYBIND11_MODULE(ppyv, m) {
     return true;
   };
 
+  std::atexit(_finalize_kokkos_void);
+
   m.def("compute_hypercube", &compute_hypercube, "Compute hypercube");
-  m.def("initialize", _initialize, "Initialize Kokkos");
-  m.def("finalize", _finalize, "Finalize Kokkos");
+  m.def("initialize", _initialize_kokkos, "Initialize Kokkos");
+  m.def("finalize", _finalize_kokkos, "Finalize Kokkos");
 }
