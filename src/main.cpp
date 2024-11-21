@@ -328,8 +328,8 @@ void hypercube(Kokkos::View<double **> &xc, Kokkos::View<double **> &vc,
         Point xcell = {(xc(i, 0) - O.x) / cfg.dx, (xc(i, 1) - O.y) / cfg.dx,
                        (xc(i, 2) - O.z) / cfg.dx};
         // Rotate and shift to [0, 1]
-        xcell = {dot3d(xcell, uu) + 0.5, dot3d(xcell, vv) + 0.5,
-                 dot3d(xcell, ww) + 0.5};
+        xcell = {dot3d(xcell, u) + 0.5, dot3d(xcell, v) + 0.5,
+                 dot3d(xcell, w) + 0.5};
 
         Point vcell = {vc(i, 0), vc(i, 1), vc(i, 2)};
         const double vlos = dot3d(vcell, w);
