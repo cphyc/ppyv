@@ -18,25 +18,19 @@ The PPyV package requires:
 
 ```bash
 # Clone the repository
-git clone https://github.com/cphyc/ppyv.git --recurse-submodules
+git clone https://github.com/cphyc/ppyv.git --recursive
 
-# Create a build directory
-mkdir build
+# Pip install the package (single threaded)
+pip install .
 
-# Go to the build directory
-cd build
+# Pip install the package (with OpenMP support)
+pip install . -Ccmake.define.Kokkos_ENABLE_OPENMP=ON
 
-# Configure the project in serial mode
-cmake -DCMAKE_BUILD_TYPE=Release ..
-# or parallel mode
-cmake -DCMAKE_BUILD_TYPE=Release -DKokkos_ENABLE_OPENMP=ON ..
-# or with CUDA support
-cmake -DCMAKE_BUILD_TYPE=Release -DKokkos_ENABLE_CUDA=ON ..
-# or with HIP support
-cmake -DCMAKE_BUILD_TYPE=Release -DKokkos_ENABLE_HIP=ON ..
+# Pip install the package (with CUDA support)
+pip install . -Ccmake.define.Kokkos_ENABLE_CUDA=ON
 
-# Build the project
-make
+# Pip install the package (with CUDA support, using clang as compiler)
+CC=clang CXX=clang++ pip install . -Ccmake.define.Kokkos_ENABLE_CUDA=ON
 
 # Test import
 python -c 'import ppyv'
@@ -53,7 +47,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 import yt
-import ppyv
+from ppyv import ppyv
 
 
 # Create velocity dispersion field
