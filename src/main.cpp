@@ -1,20 +1,26 @@
-#include <math.h>
-#include <iostream>
-#include <fstream>
 #include <algorithm>
+#include <fstream>
+#include <iostream>
 #include <limits>
+#include <math.h>
 
 #include <Kokkos_Core.hpp>
-#include <Kokkos_Random.hpp>
+#include <Kokkos_ScatterView.hpp>
 
-#include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
 
 namespace py = pybind11;
 
-typedef Kokkos::View<double***, Kokkos::LayoutRight, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> View3D_C;
-typedef Kokkos::View<double**, Kokkos::LayoutRight, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> View2D_C;
-typedef Kokkos::View<double*, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> View1D;
+typedef Kokkos::View<double ***, Kokkos::LayoutRight, Kokkos::HostSpace,
+                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+    View3D_C;
+typedef Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace,
+                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+    View2D_C;
+typedef Kokkos::View<double *, Kokkos::HostSpace,
+                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+    View1D;
 typedef py::array_t<double, py::array::c_style | py::array::forcecast> PyCArray;
 typedef py::array_t<double, py::array::f_style | py::array::forcecast> PyFArray;
 
@@ -30,7 +36,7 @@ struct Config {
 #define SIGN(x) ((x) > 0 ? 1 : -1)
 
 KOKKOS_INLINE_FUNCTION
-double normal(double mu, double sigma, auto& generator) {
+double normal(double mu, double sigma, auto &generator) {
   // Use Box-Muller method to generate a normal distribution
   double u = generator.drand(0, 1);
   double v = generator.drand(0, 1);
@@ -39,69 +45,66 @@ double normal(double mu, double sigma, auto& generator) {
 
 // Define a point structure
 struct Point {
-    double x, y, z;
+  double x, y, z;
 
-    constexpr Point() : x(0), y(0), z(0) {}
-    constexpr Point(double x, double y, double z) : x(x), y(y), z(z) {}
-    Point(PyCArray arr) {
-      py::buffer_info buf = arr.request();
-      if (buf.ndim != 1) {
-        throw std::runtime_error("Input array must be 1D");
-      }
-      if (buf.shape[0] != 3) {
-        throw std::runtime_error("Input array must have shape (3,)");
-      }
-      double* ptr = static_cast<double*>(buf.ptr);
-      x = ptr[0];
-      y = ptr[1];
-      z = ptr[2];
+  constexpr Point() : x(0), y(0), z(0) {}
+  constexpr Point(double x, double y, double z) : x(x), y(y), z(z) {}
+  Point(PyCArray arr) {
+    py::buffer_info buf = arr.request();
+    if (buf.ndim != 1) {
+      throw std::runtime_error("Input array must be 1D");
     }
-
-    KOKKOS_INLINE_FUNCTION
-    constexpr Point operator+(const Point& p) const {
-        return {x + p.x, y + p.y, z + p.z};
+    if (buf.shape[0] != 3) {
+      throw std::runtime_error("Input array must have shape (3,)");
     }
+    double *ptr = static_cast<double *>(buf.ptr);
+    x = ptr[0];
+    y = ptr[1];
+    z = ptr[2];
+  }
 
-    KOKKOS_INLINE_FUNCTION
-    constexpr Point operator+(const auto v) const {
-        return {x + v, y + v, z + v};
-    }
+  KOKKOS_INLINE_FUNCTION
+  constexpr Point operator+(const Point &p) const {
+    return {x + p.x, y + p.y, z + p.z};
+  }
 
+  KOKKOS_INLINE_FUNCTION
+  constexpr Point operator+(const auto v) const {
+    return {x + v, y + v, z + v};
+  }
 
-    KOKKOS_INLINE_FUNCTION
-    constexpr Point operator-(const Point& p) const {
-        return {x - p.x, y - p.y, z - p.z};
-    }
+  KOKKOS_INLINE_FUNCTION
+  constexpr Point operator-(const Point &p) const {
+    return {x - p.x, y - p.y, z - p.z};
+  }
 
-    KOKKOS_INLINE_FUNCTION
-    constexpr Point operator*(const double& f) const {
-        return {x * f, y * f, z * f};
-    }
+  KOKKOS_INLINE_FUNCTION
+  constexpr Point operator*(const double &f) const {
+    return {x * f, y * f, z * f};
+  }
 
-    KOKKOS_INLINE_FUNCTION
-    constexpr Point operator/(const double& f) const {
-        return *this * (1/f);
-    }
-
+  KOKKOS_INLINE_FUNCTION
+  constexpr Point operator/(const double &f) const { return *this * (1 / f); }
 };
 
 KOKKOS_INLINE_FUNCTION
-constexpr double dot2d(const Point& a, const Point& b) {
+constexpr double dot2d(const Point &a, const Point &b) {
   return a.x * b.x + a.y * b.y;
 };
 
 KOKKOS_INLINE_FUNCTION
-constexpr double det2d(const Point& a, const Point& b) {
+constexpr double det2d(const Point &a, const Point &b) {
   return a.x * b.y - a.y * b.x;
 }
 
 KOKKOS_INLINE_FUNCTION
-constexpr double dot3d(const Point& a, const Point& b) {
+constexpr double dot3d(const Point &a, const Point &b) {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 };
 
 KOKKOS_INLINE_FUNCTION
-bool check_in_parallelogram(const Point& PA, const Point& PQ, const Point& PR, const int signPQ, const int signPR, double out[2]) {
+bool check_in_parallelogram(const Point &PA, const Point &PQ, const Point &PR,
+                            const int signPQ, const int signPR, double out[2]) {
   double det_PQR = det2d(PQ, PR);
 
   if (det_PQR == 0) {
@@ -112,11 +115,8 @@ bool check_in_parallelogram(const Point& PA, const Point& PQ, const Point& PR, c
     out[0] = -det2d(PA, PQ) / det_PQR;
     out[1] = det2d(PA, PR) / det_PQR;
 
-    if ((0 <= signPQ * out[0]) &
-        (1 >= signPQ * out[0]) &
-        (0 <= signPR * out[1]) &
-        (1 >= signPR * out[1])
-    ) {
+    if ((0 <= signPQ * out[0]) & (1 >= signPQ * out[0]) &
+        (0 <= signPR * out[1]) & (1 >= signPR * out[1])) {
       return true;
     } else {
       out[0] = -1;
@@ -127,9 +127,15 @@ bool check_in_parallelogram(const Point& PA, const Point& PQ, const Point& PR, c
 }
 
 KOKKOS_INLINE_FUNCTION
-void direct_integrate_cube(const Point& O, const Point& Oback, const Point& u, const Point& v, const Point& w, const double weight, Kokkos::View<double***> buffer, Kokkos::View<bool**> buffer_mask) {
-  const int Nx = buffer.extent(0);
-  const int Ny = buffer.extent(1);
+void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
+                           const Point &v, const Point &w, const double weight,
+                           const double vel, const double sigma_v,
+                           const int NpixVelocity,
+                           // Kokkos::View<double ***> buffer,
+                           Kokkos::View<double ***> buffer,
+                           Kokkos::View<bool **> buffer_mask) {
+  const int Nx = buffer_mask.extent(0);
+  const int Ny = buffer_mask.extent(1);
 
   Point X({0, 0, 0});
   Point OfrontA({0, 0, 0}), ObackA({0, 0, 0});
@@ -138,22 +144,12 @@ void direct_integrate_cube(const Point& O, const Point& Oback, const Point& u, c
   const double inv_dy = 1. / Ny;
   double nm[2] = {0, 0};
 
-  auto minMax = [](
-      const double O,
-      const double Oback,
-      const double u,
-      const double v,
-      const double w,
-      const int N
-  ) {
+  auto minMax = [](const double O, const double Oback, const double u,
+                   const double v, const double w, const int N) {
     const auto [xmin, xmax] = std::minmax(
-      {O,     O + u,     O + v,     O + w,
-       Oback, Oback - u, Oback - v, Oback - w}
-    );
-    return std::make_pair(
-      int(floor((xmin > 0 ? xmin : 0) * N)),
-      int(ceil((xmax < 1 ? xmax : 1) * N))
-    );
+        {O, O + u, O + v, O + w, Oback, Oback - u, Oback - v, Oback - w});
+    return std::make_pair(int(floor((xmin > 0 ? xmin : 0) * N)),
+                          int(ceil((xmax < 1 ? xmax : 1) * N)));
   };
 
   auto [imin, imax] = minMax(O.x, Oback.x, u.x, v.x, w.x, Nx);
@@ -227,7 +223,10 @@ void direct_integrate_cube(const Point& O, const Point& Oback, const Point& u, c
       if (Nhit == 0) { // No hit
         continue;
       } else if (Nhit == 2) {
+        // TODO: This is a performance bottleneck
         Kokkos::atomic_add(&buffer(i, j, 0), (zmax - zmin) * weight);
+        // buffer(i, j, 0) += (zmax - zmin) * weight;
+
         buffer_mask(i, j) = 1;
       } else {
         // throw std::runtime_error("Nhit must be 0 or 2");
@@ -236,127 +235,113 @@ void direct_integrate_cube(const Point& O, const Point& Oback, const Point& u, c
   }
 }
 
-
 KOKKOS_INLINE_FUNCTION
-double cross(const Point& a, const Point& b, const Point& c) {
+double cross(const Point &a, const Point &b, const Point &c) {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 };
 
 // Check if point (px, py) is inside the quadrangle defined by (p0, p1, p2, p3)
 // using the cross product method.
 KOKKOS_INLINE_FUNCTION
-double locateOnQuad(const Point& p, const Point& u, const Point& v, const double dx) {
-    // Calculate position of point p in (Ou)x(Ov) plane
-    // We are in the face if tx and ty are in [-0.5, 0.5]
-    const double tx = dot2d(p, u) / dx;
-    const double ty = dot2d(p, v) / dx;
+double locateOnQuad(const Point &p, const Point &u, const Point &v,
+                    const double dx) {
+  // Calculate position of point p in (Ou)x(Ov) plane
+  // We are in the face if tx and ty are in [-0.5, 0.5]
+  const double tx = dot2d(p, u) / dx;
+  const double ty = dot2d(p, v) / dx;
 
-    // If all cross products have the same sign, the point is inside
-    if      (tx <= 0) return 0;
-    else if (tx >= 1) return 0;
-    else if (ty <= 0) return 0;
-    else if (ty >= 1) return 0;
-    else              return tx * u.z * dx + ty * v.z * dx;
+  // If all cross products have the same sign, the point is inside
+  if (tx <= 0)
+    return 0;
+  else if (tx >= 1)
+    return 0;
+  else if (ty <= 0)
+    return 0;
+  else if (ty >= 1)
+    return 0;
+  else
+    return tx * u.z * dx + ty * v.z * dx;
 }
 
+// KOKKOS_INLINE_FUNCTION
+// void cell2hypercube(const Point &x, const double dx, const double &vel_los,
+//                     const double sigma_v, const Point &u, const Point &v,
+//                     const Point &w, const double weight, const int Npix,
+//                     const int NpixVelocity,
+//                     // Kokkos::View<double ***> buffer,
+//                     Kokkos::Experimental::ScatterView<double ***> buffer,
+//                     Kokkos::View<bool **> mask) {
 
-KOKKOS_INLINE_FUNCTION
-void cell2hypercube(
-  const Point& x,
-  const double dx,
-  const Point& vel,
-  const double sigma_v,
-  const Point& u,
-  const Point& v,
-  const Point& w,
-  const double weight,
-  const int Npix,
-  const int NpixVelocity,
-  Kokkos::View<double***> buffer,
-  Kokkos::View<bool**> mask
-) {
-  Point center = x;
-  Point p000 = center - u * dx/2 - v * dx/2 - w * dx/2;
-  Point p111 = center + u * dx/2 + v * dx/2 + w * dx/2;
+// }
 
-  direct_integrate_cube(p000, p111, u * dx, v * dx, w * dx, weight, buffer, mask);
-}
-
-void hypercube(
-    Kokkos::View<double**>& xc,
-    Kokkos::View<double**>& vc,
-    Kokkos::View<double*>& dxc,
-    Kokkos::View<double*>& sigma_v,
-    Kokkos::View<double*>& weight,
-    const Point u,  // x-axis
-    const Point v,  // y-axis
-    const Point O,  // Origin
-    const Config cfg,
-    Kokkos::View<double***>& output
-) {
-  const Point w = {u.y*v.z - u.z*v.y,
-                   u.z*v.x - u.x*v.z,
-                   u.x*v.y - u.y*v.x};
+void hypercube(Kokkos::View<double **> &xc, Kokkos::View<double **> &vc,
+               Kokkos::View<double *> &dxc, Kokkos::View<double *> &sigma_v,
+               Kokkos::View<double *> &weight,
+               const Point u, // x-axis
+               const Point v, // y-axis
+               const Point O, // Origin
+               const Config cfg, Kokkos::View<double ***> &output) {
+  const Point w = {u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z,
+                   u.x * v.y - u.y * v.x};
 
   const double dv = cfg.vmax - cfg.vmin;
   double view_tot = 0.0;
 
-  Kokkos::View<bool**> mask("mask", output.extent(0), output.extent(1));
+  Kokkos::View<bool **> mask("mask", output.extent(0), output.extent(1));
 
   // Axes of AABB in rotated frame
   Point uu = {u.x, v.x, w.x};
   Point vv = {u.y, v.y, w.y};
   Point ww = {u.z, v.z, w.z};
 
-  Kokkos::parallel_for("hypercube", cfg.Npt, KOKKOS_LAMBDA(const int i) {
-    // Compute position relative to center
-    Point xcell = {
-      (xc(i, 0) - O.x) / cfg.dx,
-      (xc(i, 1) - O.y) / cfg.dx,
-      (xc(i, 2) - O.z) / cfg.dx
-    };
-    // Rotate and shift to [0, 1]
-    xcell = {dot3d(xcell, uu) + 0.5,
-             dot3d(xcell, vv) + 0.5,
-             dot3d(xcell, ww) + 0.5};
+  Kokkos::parallel_for(
+      "hypercube", cfg.Npt, KOKKOS_LAMBDA(const int i) {
+        // Compute position relative to center
+        Point xcell = {(xc(i, 0) - O.x) / cfg.dx, (xc(i, 1) - O.y) / cfg.dx,
+                       (xc(i, 2) - O.z) / cfg.dx};
+        // Rotate and shift to [0, 1]
+        xcell = {dot3d(xcell, uu) + 0.5, dot3d(xcell, vv) + 0.5,
+                 dot3d(xcell, ww) + 0.5};
 
-    Point vcell = {vc(i, 0), vc(i, 1), vc(i, 2)};
-    vcell = {dot3d(vcell, uu),
-             dot3d(vcell, vv),
-             dot3d(vcell, ww)};
+        Point vcell = {(vc(i, 0) - cfg.vmin) / dv, (vc(i, 1) - cfg.vmin) / dv,
+                       (vc(i, 2) - cfg.vmin) / dv};
+        vcell = {dot3d(vcell, uu), dot3d(vcell, vv), dot3d(vcell, ww)};
 
-    cell2hypercube(xcell, dxc(i) / cfg.dx, vcell, sigma_v(i), uu, vv, ww, weight(i), cfg.Npix, cfg.NpixVelocity, output, mask);
-  });
+        const double ddx = dxc(i) / cfg.dx;
+        Point p000 = xcell - uu * ddx / 2 - vv * ddx / 2 - ww * ddx / 2;
+        Point p111 = xcell + uu * ddx / 2 + vv * ddx / 2 + ww * ddx / 2;
 
-  Kokkos::parallel_reduce("sum", cfg.Npix, KOKKOS_LAMBDA(const int i, double& view_tot) {
-    for (auto j = 0; j < output.extent(1); j++) {
-      view_tot += output(i, j, 0);
-    }
-  }, view_tot);
+        direct_integrate_cube(p000, p111, uu * ddx, vv * ddx, ww * ddx,
+                              weight(i), vcell.z, sigma_v(i), cfg.NpixVelocity,
+                              output, mask);
 
-  std::cout << "view_tot: " << view_tot << " (" << view_tot / cfg.Npt << ")" << std::endl;
+        // cell2hypercube(xcell, dxc(i) / cfg.dx, vcell.z, sigma_v(i), uu, vv,
+        // ww,
+        //                weight(i), cfg.Npix, cfg.NpixVelocity, output, mask);
+      });
+
+  Kokkos::parallel_reduce(
+      "sum", cfg.Npix,
+      KOKKOS_LAMBDA(const int i, double &view_tot) {
+        for (auto j = 0; j < output.extent(1); j++) {
+          view_tot += output(i, j, 0);
+        }
+      },
+      view_tot);
+
+  std::cout << "view_tot: " << view_tot << " (" << view_tot / cfg.Npt << ")"
+            << std::endl;
 }
 
-
-
-PyCArray compute_hypercube(
-  const PyCArray xc,
-  const PyCArray vc,
-  const PyCArray dxc,
-  const PyCArray sigma_vc,
-  const PyCArray weight,
-  const int Npix,
-  const int NpixVelocity,
-  const PyCArray u,
-  const PyCArray v,
-  const PyCArray O,
-  const double dx
-) {
+PyCArray compute_hypercube(const PyCArray xc, const PyCArray vc,
+                           const PyCArray dxc, const PyCArray sigma_vc,
+                           const PyCArray weight, const int Npix,
+                           const int NpixVelocity, const PyCArray u,
+                           const PyCArray v, const PyCArray O, const double dx,
+                           const double vmin, const double vmax) {
   // Check input array sizes
-  py::buffer_info buf_x = xc.request(),
-                  buf_v = vc.request(), 
-                  buf_dx = dxc.request(),
-                  buf_sigma = sigma_vc.request(),
+  py::buffer_info buf_x = xc.request(), buf_v = vc.request(),
+                  buf_dx = dxc.request(), buf_sigma = sigma_vc.request(),
                   buf_weight = weight.request();
   if (buf_x.ndim != 2 || buf_v.ndim != 2) {
     throw std::runtime_error("`xc` and `vc` must be 2D");
@@ -367,7 +352,9 @@ PyCArray compute_hypercube(
   if (buf_x.shape[1] != 3 || buf_v.shape[1] != 3) {
     throw std::runtime_error("`xc` and `vc` must have shape (Npt, 3)");
   }
-  if (buf_x.shape[0] != buf_v.shape[0] || buf_x.shape[0] != buf_dx.shape[0] || buf_x.shape[0] != buf_sigma.shape[0] || buf_x.shape[0] != buf_weight.shape[0]) {
+  if (buf_x.shape[0] != buf_v.shape[0] || buf_x.shape[0] != buf_dx.shape[0] ||
+      buf_x.shape[0] != buf_sigma.shape[0] ||
+      buf_x.shape[0] != buf_weight.shape[0]) {
     throw std::runtime_error("All input arrays must have the same length");
   }
 
@@ -382,8 +369,8 @@ PyCArray compute_hypercube(
   cfg.Npt = xc.shape(0);
 
   cfg.dx = dx;
-  cfg.vmin = 0.0;
-  cfg.vmax = 1.0;
+  cfg.vmin = vmin;
+  cfg.vmax = vmax;
 
   // Output buffer
   PyCArray output = PyCArray({cfg.Npix, cfg.Npix, cfg.NpixVelocity});
@@ -403,11 +390,11 @@ PyCArray compute_hypercube(
     View1D weight_host(ptr_w, cfg.Npt);
 
     // Copy to device
-    Kokkos::View<double**> xc_dev("xc", cfg.Npt, 3);
-    Kokkos::View<double**> vc_dev("vc", cfg.Npt, 3);
-    Kokkos::View<double*> dxc_dev("dxc", cfg.Npt);
-    Kokkos::View<double*> sigma_vc_dev("sigma_v", cfg.Npt);
-    Kokkos::View<double*> weight_dev("weight", cfg.Npt);
+    Kokkos::View<double **> xc_dev("xc", cfg.Npt, 3);
+    Kokkos::View<double **> vc_dev("vc", cfg.Npt, 3);
+    Kokkos::View<double *> dxc_dev("dxc", cfg.Npt);
+    Kokkos::View<double *> sigma_vc_dev("sigma_v", cfg.Npt);
+    Kokkos::View<double *> weight_dev("weight", cfg.Npt);
 
     // Copy input data to device
     {
@@ -424,8 +411,10 @@ PyCArray compute_hypercube(
     Kokkos::deep_copy(sigma_vc_dev, sigma_vc_host);
     Kokkos::deep_copy(weight_dev, weight_host);
 
-    Kokkos::View<double***> cube("hypercube", cfg.Npix, cfg.Npix, cfg.NpixVelocity);
-    hypercube(xc_dev, vc_dev, dxc_dev, sigma_vc_dev, weight_dev, uu, vv, OO, cfg, cube);
+    Kokkos::View<double ***> cube("hypercube", cfg.Npix, cfg.Npix,
+                                  cfg.NpixVelocity);
+    hypercube(xc_dev, vc_dev, dxc_dev, sigma_vc_dev, weight_dev, uu, vv, OO,
+              cfg, cube);
 
     // Copy output to host
     auto cube_host = Kokkos::create_mirror_view(cube);
@@ -440,12 +429,18 @@ PyCArray compute_hypercube(
   return output;
 }
 
-void initialize(){
+bool initialize() {
+  if (Kokkos::is_initialized())
+    return false;
   Kokkos::initialize();
+  return true;
 }
 
-void finalize(){
+bool finalize() {
+  if (!Kokkos::is_initialized())
+    return false;
   Kokkos::finalize();
+  return true;
 }
 
 PYBIND11_MODULE(ppv, m) {
