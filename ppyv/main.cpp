@@ -163,13 +163,13 @@ bool check_in_parallelogram(const Point &PA, const Point &PQ, const Point &PR,
 KOKKOS_INLINE_FUNCTION
 void kernel_gaussian(const int i, const int j, const int N, const double mean,
                      const double std, const double w,
-                     Kokkos::View<double ***> out) {
+                     Kokkos::View<double ***> &out) {
   const double mm = mean * N, ss = std * N;
   const double one_over_sqrt2std = 1 / (sqrt(2) * std * N);
   int kmin = std::max(int(floor(mm - 4 * ss)), 0),
       kmax = std::min(int(ceil(mm + 4 * ss)), N);
 
-  if (kmin + 1 == kmax) {
+  if (kmin + 1 >= kmax) {
     Kokkos::atomic_add(&out(i, j, kmin), w);
     return;
   }
@@ -210,8 +210,9 @@ void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
   auto [jmin, jmax] = minMax(O.y, Oback.y, u.y, v.y, w.y, Ny);
 
   // Special case: cell spans a single pixel
-  if (((0 <= imin) && (imin + 1 == imax) && (imax < Nx)) &&
-      ((0 <= jmin) && (jmin + 1 == jmax) && (jmax < Ny))) {
+  // Note: if we *exactly* hit a pixel edge, imin == imax
+  if (((0 <= imin) && (imin + 1 >= imax) && (imax < Nx)) &&
+      ((0 <= jmin) && (jmin + 1 >= jmax) && (jmax < Ny))) {
     kernel_gaussian(imin, jmin, NpixVelocity, vel, sigma_v,
                     weight * dx * dx * dx * Nx * Ny, buffer);
     // buffer(imin, jmin, 0) += weight;
@@ -286,12 +287,8 @@ void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
       if (Nhit == 0) { // No hit
         continue;
       } else if (Nhit == 2) {
-        // TODO: This is a performance bottleneck
-        // Kokkos::atomic_add(&buffer(i, j, 0), (zmax - zmin) * weight);
         kernel_gaussian(i, j, NpixVelocity, vel, sigma_v,
                         (zmax - zmin) * weight, buffer);
-        // buffer(i, j, 0) += (zmax - zmin) * weight;
-
       } else {
         // throw std::runtime_error("Nhit must be 0 or 2");
       }
