@@ -183,10 +183,9 @@ void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
                            const double vel, const double sigma_v,
                            const int NpixVelocity,
                            // Kokkos::View<double ***> buffer,
-                           Kokkos::View<double ***> buffer,
-                           Kokkos::View<bool **> buffer_mask) {
-  const int Nx = buffer_mask.extent(0);
-  const int Ny = buffer_mask.extent(1);
+                           Kokkos::View<double ***> buffer) {
+  const int Nx = buffer.extent(0);
+  const int Ny = buffer.extent(1);
 
   Point X({0, 0, 0});
   Point OfrontA({0, 0, 0}), ObackA({0, 0, 0});
@@ -212,7 +211,6 @@ void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
     // TODO: should probably weight by size of cell?
     kernel_gaussian(imin, jmin, NpixVelocity, vel, sigma_v, weight, buffer);
     // buffer(imin, jmin, 0) += weight;
-    buffer_mask(imin, jmin) = 1;
     return;
   }
 
@@ -290,7 +288,6 @@ void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
                         (zmax - zmin) * weight, buffer);
         // buffer(i, j, 0) += (zmax - zmin) * weight;
 
-        buffer_mask(i, j) = 1;
       } else {
         // throw std::runtime_error("Nhit must be 0 or 2");
       }
@@ -349,8 +346,6 @@ void hypercube(Kokkos::View<double **> &xc, Kokkos::View<double **> &vc,
 
   const double dv = cfg.vmax - cfg.vmin;
 
-  Kokkos::View<bool **> mask("mask", output.extent(0), output.extent(1));
-
   // Axes of AABB in rotated frame
   Point uu = {u.x, v.x, w.x};
   Point vv = {u.y, v.y, w.y};
@@ -374,7 +369,7 @@ void hypercube(Kokkos::View<double **> &xc, Kokkos::View<double **> &vc,
 
         direct_integrate_cube(p000, p111, uu * ddx, vv * ddx, ww * ddx,
                               weight(i), (vlos - cfg.vmin) / dv,
-                              sigma_v(i) / dv, cfg.NpixVelocity, output, mask);
+                              sigma_v(i) / dv, cfg.NpixVelocity, output);
       });
 }
 
