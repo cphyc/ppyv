@@ -186,8 +186,7 @@ KOKKOS_INLINE_FUNCTION
 void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
                            const Point &v, const Point &w, const double weight,
                            const double vel, const double sigma_v,
-                           const int NpixVelocity,
-                           // Kokkos::View<double ***> buffer,
+                           const int NpixVelocity, const double dx,
                            Kokkos::View<double ***> buffer) {
   const int Nx = buffer.extent(0);
   const int Ny = buffer.extent(1);
@@ -211,10 +210,10 @@ void direct_integrate_cube(const Point &O, const Point &Oback, const Point &u,
   auto [jmin, jmax] = minMax(O.y, Oback.y, u.y, v.y, w.y, Ny);
 
   // Special case: cell spans a single pixel
-  if ((0 <= imin && imin == imax + 1 && imax < Nx) &&
-      (0 <= jmin && jmin == jmax + 1 && jmax < Ny)) {
-    // TODO: should probably weight by size of cell?
-    kernel_gaussian(imin, jmin, NpixVelocity, vel, sigma_v, weight, buffer);
+  if (((0 <= imin) && (imin + 1 == imax) && (imax < Nx)) &&
+      ((0 <= jmin) && (jmin + 1 == jmax) && (jmax < Ny))) {
+    kernel_gaussian(imin, jmin, NpixVelocity, vel, sigma_v,
+                    weight * dx * dx * dx * Nx * Ny, buffer);
     // buffer(imin, jmin, 0) += weight;
     return;
   }
@@ -374,7 +373,7 @@ void hypercube(Kokkos::View<double **> &xc, Kokkos::View<double **> &vc,
 
         direct_integrate_cube(p000, p111, uu * ddx, vv * ddx, ww * ddx,
                               weight(i), (vlos - cfg.vmin) / dv,
-                              sigma_v(i) / dv, cfg.NpixVelocity, output);
+                              sigma_v(i) / dv, cfg.NpixVelocity, ddx, output);
       });
 }
 
