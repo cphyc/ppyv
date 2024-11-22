@@ -13,11 +13,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # If ccache is found, use it
-find_program(CCACHE_FOUND ccache)
-if(CCACHE_FOUND)
-    # Inform user
-    message(STATUS "ccache found, using it")
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
+find_program(CCACHE_PROGRAM ccache)
+if (CCACHE_PROGRAM)
+    message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
+    set(C_LAUNCHER   "${CCACHE_PROGRAM}")
+    set(CXX_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
 endif()
 
 # Compile with -fPIC
