@@ -169,6 +169,11 @@ void kernel_gaussian(const int i, const int j, const int N, const double mean,
   int kmin = std::max(int(floor(mm - 4 * ss)), 0),
       kmax = std::min(int(ceil(mm + 4 * ss)), N);
 
+  if (kmin + 1 == kmax) {
+    Kokkos::atomic_add(&out(i, j, kmin), w);
+    return;
+  }
+
   for (auto k = kmin; k < kmax; ++k) {
     Kokkos::atomic_add(&out(i, j, k),
                        w / 2 *
