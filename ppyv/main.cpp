@@ -170,9 +170,10 @@ void kernel_gaussian(const int i, const int j, const int N, const double mean,
       kmax = std::min(int(ceil(mm + 4 * ss)), N);
 
   for (auto k = kmin; k < kmax; ++k) {
-    out(i, j, k) += w / 2 *
-                    (std::erf((k + 1 - mm) * one_over_sqrt2std) -
-                     std::erf((k - mm) * one_over_sqrt2std));
+    Kokkos::atomic_add(&out(i, j, k),
+                       w / 2 *
+                           (std::erf((k + 1 - mm) * one_over_sqrt2std) -
+                            std::erf((k - mm) * one_over_sqrt2std)));
   }
 }
 
